@@ -1,1 +1,94 @@
+---
+title: "gene expression colon cancer cells ERBB3"
+output: html_document
+date: "2025-08-13"
+---
 
+# load packages
+
+```{r}
+library(readr)
+library(dplyr)
+library(cmapR)
+library(STRINGdb)
+library(RCy3)
+library(igraph)
+library(plyr)
+```
+
+# map ds@mat rownames to gene symbols
+
+```{r}
+# Map ds@mat rownames (gene IDs) to gene symbols
+row_ids <- rownames(ds@mat)
+gene_map <- gene_info %>%
+  filter(pr_gene_id %in% row_ids) %>%
+  select(pr_gene_id, pr_gene_symbol)
+
+# Ensure gene_map is in the same order as ds@mat rows
+gene_map <- gene_map[match(row_ids, gene_map$pr_gene_id), ]
+gene_symbols <- gene_map$pr_gene_symbol
+```
+
+# load gene file with knockdown ERBB3
+
+```{r}
+sig_info2 <- read.delim("GSE92742_Broad_LINCS_sig_info.txt.gz", stringsAsFactors=FALSE)
+
+erbb3_knockdown_sigs <- sig_info2 %>%
+  filter(
+    grepl("ERBB3", pert_iname, ignore.case = TRUE) & 
+    grepl("trt_sh|trt_pr|trt_cr|KD|knockdown|shRNA", pert_type, ignore.case = TRUE)
+  ) %>%
+  distinct(sig_id, pert_iname, pert_type, cell_id, pert_time)
+
+erbb3_knockdown_sig_ids <- erbb3_knockdown_sigs$sig_id
+
+# Path to the large MODZ GCTX file (adjust path as needed)
+ds_path2 <- "GSE92742_Broad_LINCS_Level5_COMPZ.MODZ_n473647x12328.gctx"
+
+# Load only ERBB3 knockdown signature rows from the big file
+ds_erbb3_sh <- parse_gctx(ds_path2, cid = erbb3_knockdown_sig_ids)
+
+col_meta <- read_gctx_meta(ds_path2, dim = "col")
+all_cids <- col_meta$id
+
+matched_cids <- sapply(erbb3_knockdown_sig_ids, function(x) {
+  all_cids[grepl(x, all_cids)]
+})
+
+# Flatten list to vector
+matched_cids <- unique(unlist(matched_cids))
+
+length(matched_cids)  # Should be >= 382
+head(matched_cids)
+
+ds_erbb3_sh <- parse_gctx(ds_path2, cid = matched_cids)
+
+# 2. Subset gene_map to rows present in ds_erbb3_sh
+gene_map_sub <- gene_map %>%
+  filter(pr_gene_id %in% ds_erbb3_sh@rid)
+
+# 3. Extract matrix (genes x ERBB3 knockdown sigs)
+expr_mat <- ds_erbb3_sh@mat
+
+# 4. Check rownames correspond to gene IDs
+rownames(expr_mat) <- ds_erbb3_sh@rid
+
+ERBB3kdexpr_df <- as.data.frame(expr_mat)
+ERBB3kdexpr_df$gene_symbol <- gene_symbols
+ERBB3kdexpr_df <- ERBB3kdexpr_df %>% select(gene_symbol, everything())
+```
+
+## filter colon cancer cell lines - BRAF WT
+
+```{r}
+crc_brafwt_sig_ids <- sig_info2 %>%
+  filter(cell_id == "LOVO" | cell_id == "SW480" | cell_id == "SW620" | cell_id == "SW948") %>%
+  pull(sig_id)
+
+# Keep gene_symbol column plus those crc_brafwt sig columns that exist in ERBB3kdexpr_df
+crc_brafwt_cols <- intersect(crc_brafwt_sig_ids, colnames(ERBB3kdexpr_df))
+crc_brafwt_kdERBB3_df <- ERBB3kdexpr_df %>%
+  select(gene_symbol, all_of(crc_brafwt_cols))
+```
