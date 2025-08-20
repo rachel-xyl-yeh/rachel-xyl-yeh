@@ -84,7 +84,7 @@ ERBB3kdexpr_df <- ERBB3kdexpr_df %>% select(gene_symbol, everything())
 
 ```{r}
 crc_brafwt_sig_ids <- sig_info2 %>%
-  filter(cell_id == "LOVO" | cell_id == "SW480" | cell_id == "SW620" | cell_id == "SW948") %>%
+  filter(cell_id == "LOVO" | cell_id == "SW480" | cell_id == "SW620" | cell_id == "SW948" | cell_id == "HCT116" | cell_id == "DLD1") %>%
   pull(sig_id)
 
 # Keep gene_symbol column plus those crc_brafwt sig columns that exist in ERBB3kdexpr_df
