@@ -91,4 +91,6 @@ crc_brafwt_sig_ids <- sig_info2 %>%
 crc_brafwt_cols <- intersect(crc_brafwt_sig_ids, colnames(ERBB3kdexpr_df))
 crc_brafwt_kdERBB3_df <- ERBB3kdexpr_df %>%
   select(gene_symbol, all_of(crc_brafwt_cols))
+
+write_csv(crc_brafwt_kdERBB3_df, "HER3 knockdown gene expression in SW480 cells.csv")
 ```
