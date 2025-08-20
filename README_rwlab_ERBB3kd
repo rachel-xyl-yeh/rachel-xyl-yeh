@@ -1,3 +1,5 @@
 - File for "GSE92742_Broad_LINCS_sig_info.txt.gz" and "GSE92742_Broad_LINCS_Level5_COMPZ.MODZ_n473647x12328.gctx" found here: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE92742
 - For overexpression gene expression data, files are found here: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE70138
 - However, there is NO ERBB3 overexpression data in colon cancer cells with WT BRAF mutations. Only have for HT29 colon cancer cells
+- LINCS files can be found found here: https://maayanlab.cloud/sigcom-lincs/#/Download or https://clue.io/
+- IBDMD files can be found here: https://ibdmdb.org/ --> https://ibdmdb.org/results
