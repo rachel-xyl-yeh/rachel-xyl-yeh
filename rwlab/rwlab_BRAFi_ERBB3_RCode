@@ -1,0 +1,169 @@
+---
+title: "gene expressions brafi and erbb3"
+output: html_document
+date: "2025-08-06"
+---
+
+# load packages
+
+```{r}
+library(readr)
+library(cmapR)
+library(STRINGdb)
+library(RCy3)
+library(igraph)
+library(plyr)
+library(dplyr)
+```
+
+# read BRAFi gene expression files
+
+```{r}
+vem <- read.delim("L1000_LINCS_DCIC_ASG002_HT29_24H_M07_vemurafenib_10uM.tsv", stringsAsFactors = FALSE)
+dab <- read.delim("L1000_LINCS_DCIC_ASG002_HT29_24H_K22_dabrafenib_10uM.tsv", stringsAsFactors = FALSE)
+enc <- read.delim("L1000_LINCS_DCIC_REP.A014_HT29_24H_A19_LGX-818_10uM.tsv", stringsAsFactors = FALSE)
+
+vem2 <- read.delim("L1000_LINCS_DCIC_CPC006_HCT116_6H_M06_vemurafenib_10uM.tsv", stringsAsFactors = FALSE)
+enc2 <- read.delim("L1000_LINCS_DCIC_ISO002_HCT116.WT_24H_N07_LGX-818_10uM.tsv", stringsAsFactors = FALSE)
+```
+
+## rename expression column
+
+```{r}
+vem <- vem %>% dplyr::rename(vem_expr = CD.coefficient)
+dab <- dab %>% dplyr::rename(dab_expr = CD.coefficient)
+enc <- enc %>% dplyr::rename(enc_expr = CD.coefficient)
+
+vem2 <- vem2 %>% dplyr::rename(vem_expr = CD.coefficient)
+enc2 <- enc2 %>% dplyr::rename(enc_expr = CD.coefficient)
+```
+
+# prepare for GSEA - making .rnk files
+
+```{r}
+write_rnk <- function(df, gene_col_name, score_col_name, outfile) {
+  rnk <- df[, c(gene_col_name, score_col_name)]
+  rnk <- rnk[!is.na(rnk[,2]), ]
+  rnk <- rnk[order(-rnk[,2]), ]
+  write.table(rnk, file = outfile, sep="\t", row.names = FALSE, col.names = FALSE, quote=FALSE)
+}
+
+write_rnk(vem,  "symbol", "vem_expr", "HT29_vemurafenib_rep1.rnk")
+write_rnk(dab,  "symbol", "dab_expr", "HT29_dabrafenib_rep1.rnk")
+write_rnk(enc,  "symbol", "enc_expr", "HT29_encorafenib_rep1.rnk")
+write_rnk(vem2, "symbol", "vem_expr", "HCT116_vemurafenib_rep1.rnk")
+write_rnk(enc2, "symbol", "enc_expr", "HCT116_encorafenib_rep1.rnk")
+```
+
+# load gene file
+
+```{r}
+ds_path <- "GSE70138_Broad_LINCS_Level5_COMPZ_n118050x12328_2017-03-06.gctx"
+ds <- parse_gctx(ds_path)
+
+gene_info <- read.delim("GSE70138_Broad_LINCS_gene_info_2017-03-06.txt.gz", stringsAsFactors=FALSE)
+sig_info <- read.delim("GSE70138_Broad_LINCS_sig_info_2017-03-06.txt.gz", stringsAsFactors=FALSE)
+```
+
+# map ds@mat rownames to gene symbols
+
+```{r}
+# Map ds@mat rownames (gene IDs) to gene symbols
+row_ids <- rownames(ds@mat)
+gene_map <- gene_info %>%
+  filter(pr_gene_id %in% row_ids) %>%
+  select(pr_gene_id, pr_gene_symbol)
+
+# Ensure gene_map is in the same order as ds@mat rows
+gene_map <- gene_map[match(row_ids, gene_map$pr_gene_id), ]
+gene_symbols <- gene_map$pr_gene_symbol
+```
+
+# filter for ERBB3 signatures
+
+```{r}
+erbb3_sigs <- sig_info %>% 
+  filter(grepl("ERBB3", pert_iname, ignore.case = TRUE))
+
+# Extract sig_ids of ERBB3 signatures
+erbb3_sig_ids <- erbb3_sigs$sig_id
+
+# Find which columns in ds@mat correspond to these sig_ids
+erbb3_cols <- which(colnames(ds@mat) %in% erbb3_sig_ids)
+
+# Subset to ERBB3 only
+ds_erbb3 <- ds@mat[, erbb3_cols]
+ds_erbb3_df <- as.data.frame(ds_erbb3)
+
+ds_erbb3_df$gene_symbol <- gene_symbols
+ds_erbb3_df <- ds_erbb3_df %>% select(gene_symbol, everything())
+
+# Keep gene_symbol column plus HT29 sig columns that exist in ds_erbb3_df
+ht29_cols <- grep("HT29.311", colnames(ds_erbb3_df), value = TRUE)
+ht29_oeERBB3_df <- ds_erbb3_df %>%
+  select(gene_symbol, all_of(ht29_cols))
+```
+
+# knockdown HER3
+
+```{r}
+sig_info2 <- read.delim("GSE92742_Broad_LINCS_sig_info.txt.gz", stringsAsFactors=FALSE)
+
+erbb3_knockdown_sigs <- sig_info2 %>%
+  filter(
+    grepl("ERBB3", pert_iname, ignore.case = TRUE) & 
+    grepl("trt_sh|trt_pr|trt_cr|KD|knockdown|shRNA", pert_type, ignore.case = TRUE)
+  ) %>%
+  distinct(sig_id, pert_iname, pert_type, cell_id, pert_time)
+
+erbb3_knockdown_sig_ids <- erbb3_knockdown_sigs$sig_id
+
+# Path to the large MODZ GCTX file (adjust path as needed)
+ds_path2 <- "GSE92742_Broad_LINCS_Level5_COMPZ.MODZ_n473647x12328.gctx"
+
+# Load only ERBB3 knockdown signature rows from the big file
+ds_erbb3_sh <- parse_gctx(ds_path2, cid = erbb3_knockdown_sig_ids)
+
+col_meta <- read_gctx_meta(ds_path2, dim = "col")
+all_cids <- col_meta$id
+
+matched_cids <- sapply(erbb3_knockdown_sig_ids, function(x) {
+  all_cids[grepl(x, all_cids)]
+})
+
+# Flatten list to vector
+matched_cids <- unique(unlist(matched_cids))
+
+length(matched_cids)  # Should be >= 382
+head(matched_cids)
+
+ds_erbb3_sh <- parse_gctx(ds_path2, cid = matched_cids)
+
+# 2. Subset gene_map to rows present in ds_erbb3_sh
+gene_map_sub <- gene_map %>%
+  filter(pr_gene_id %in% ds_erbb3_sh@rid)
+
+# 3. Extract matrix (genes x ERBB3 knockdown sigs)
+expr_mat <- ds_erbb3_sh@mat
+
+# 4. Check rownames correspond to gene IDs
+rownames(expr_mat) <- ds_erbb3_sh@rid
+
+ERBB3oexpr_df <- as.data.frame(expr_mat)
+ERBB3oexpr_df$gene_symbol <- gene_symbols
+ERBB3oexpr_df <- ERBB3oexpr_df %>% select(gene_symbol, everything())
+```
+
+## pull HT29 cells
+
+```{r}
+ht29_sig_ids <- sig_info2 %>%
+  filter(cell_id == "HT29") %>%
+  pull(sig_id)
+
+# Columns in ERBB3oexpr_df corresponding to HT29 sig_ids
+# Keep gene_symbol column plus HT29 sig columns that exist in ERBB3oexpr_df
+ht29_cols <- intersect(ht29_sig_ids, colnames(ERBB3oexpr_df))
+ht29_kdERBB3_df <- ERBB3oexpr_df %>%
+  select(gene_symbol, all_of(ht29_cols))
+```
