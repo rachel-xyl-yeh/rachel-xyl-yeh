@@ -1,0 +1,41 @@
+---
+title: "LINCS metadata read"
+output: html_document
+date: "2025-07-23"
+---
+
+```{r}
+library(arrow)
+library(data.table)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(readr)
+library(tidyr)
+library(ggpubr)
+```
+
+# read files and isolate for BRAF inhibitors
+
+```{r}
+metadata <- arrow::read_parquet("~/Documents/Rotation_1/lincs_sign_meta.parquet")
+
+braf <- metadata %>%
+  filter(pert_name == "vemurafenib" | pert_name == "dabrafenib" | pert_name == "encorafenib" | pert_name == "LGX-818")
+
+lincs <- read.csv("~/Documents/Rotation_1/lincs_chemical_signature_metadata.csv")
+```
+
+# narrow down dataframe to relevant columns
+
+```{r}
+fil_braf <- braf %>%
+  select(doid, tissue, disease, cell_line, pert_dose, pert_name, pert_time, pubchem_id, filename, persistent_id)
+```
+
+# filter disease type
+
+```{r}
+ca <- fil_braf %>%
+  filter(disease == "pancreatic carcinoma" | disease == "colon carcinoma" | disease == "colon adenocarcinoma")
+```
